@@ -6,47 +6,47 @@ Deployed Applications:
 
 Application: {{ $app.name }}
 ---
-{{- if $app.virtualService.enabled }}
+{{- if and $app.virtualService $app.virtualService.enabled }}
   The application should be accessible via Istio VirtualService:
   {{- range $app.virtualService.hosts }}
   - https://{{ . }}
   {{- end }}
-{{- else if contains "NodePort" $app.service.type }}
+{{- else if and $app.service (contains "NodePort" $app.service.type) }}
   export NODE_PORT=$(kubectl get --namespace {{ $namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "k8s-app.fullname" $ctx }})
   export NODE_IP=$(kubectl get nodes --namespace {{ $namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
   echo http://$NODE_IP:$NODE_PORT
-{{- else if contains "LoadBalancer" $app.service.type }}
+{{- else if and $app.service (contains "LoadBalancer" $app.service.type) }}
   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
         You can watch the status of by running 'kubectl get --namespace {{ $namespace }} svc -w {{ include "k8s-app.fullname" $ctx }}'
   export SERVICE_IP=$(kubectl get svc --namespace {{ $namespace }} {{ include "k8s-app.fullname" $ctx }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
   echo http://$SERVICE_IP:{{ $app.service.port }}
-{{- else if contains "ClusterIP" $app.service.type }}
+{{- else if and $app.service (contains "ClusterIP" $app.service.type) }}
   export POD_NAME=$(kubectl get pods --namespace {{ $namespace }} -l "app.kubernetes.io/name={{ include "k8s-app.name" $ctx }},app.kubernetes.io/instance={{ $.Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
   echo "Visit http://127.0.0.1:8080 to use your application"
-  kubectl --namespace {{ $namespace }} port-forward $POD_NAME 8080:{{ $app.service.targetPort }}
+  kubectl --namespace {{ $namespace }} port-forward $POD_NAME 8080:{{ if $app.service }}{{ $app.service.targetPort | default 8080 }}{{ else }}8080{{ end }}
 {{- end }}
 
   Check the status of the deployment:
     kubectl get deployment {{ include "k8s-app.fullname" $ctx }} -n {{ $namespace }}
 
-{{- if $app.hpa.enabled }}
+{{- if and $app.hpa $app.hpa.enabled }}
   Monitor the HPA status:
     kubectl get hpa {{ include "k8s-app.fullname" $ctx }} -n {{ $namespace }}
 {{- end }}
 
-{{- if $app.serviceMonitor.enabled }}
+{{- if and $app.serviceMonitor $app.serviceMonitor.enabled }}
   ServiceMonitor has been created for Prometheus monitoring.
 {{- end }}
 
-{{- if $app.prometheusRule.enabled }}
+{{- if and $app.prometheusRule $app.prometheusRule.enabled }}
   PrometheusRule has been created for alerting.
 {{- end }}
 
-{{- if $app.virtualService.enabled }}
+{{- if and $app.virtualService $app.virtualService.enabled }}
   Istio VirtualService has been configured for traffic routing.
 {{- end }}
 
-{{- if $app.destinationRule.enabled }}
+{{- if and $app.destinationRule $app.destinationRule.enabled }}
   Istio DestinationRule has been configured for traffic policies.
 {{- end }}
 
