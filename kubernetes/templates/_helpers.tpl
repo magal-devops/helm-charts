@@ -88,4 +88,16 @@ Return the appropriate apiVersion for PodDisruptionBudget.
 {{- else }}
 {{- print "policy/v1beta1" }}
 {{- end }}
+{{- end }}
+
+{{/*
+Base labels for resources
+*/}}
+{{- define "k8s-app.baseLabels" -}}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- with .Values.kubernetes.base.metadata }}
+{{- range $key, $value := . }}
+{{ $key }}: {{ $value | quote }}
+{{- end }}
+{{- end }}
 {{- end }} 
