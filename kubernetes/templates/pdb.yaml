@@ -1,6 +1,5 @@
-{{- range .Values.kubernetes.apps }}
-{{- $app := . }}
-{{- $ctx := dict "app" $app "root" $ }}
+{{- range $appName, $app := .Values.kubernetes.apps }}
+{{- $ctx := dict "app" $app "appName" $appName "root" $ }}
 {{- if and $app.pdb $app.pdb.enabled }}
 ---
 apiVersion: {{ include "k8s-app.pdb.apiVersion" $ctx }}

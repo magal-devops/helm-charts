@@ -15,7 +15,7 @@ kubernetes:
     namespace:
       annotations: {}
   apps:
-    - name: magal-devops-api
+    api:
       image:
         registry: docker.io
         repository: grafana/synthetic-monitoring-agent

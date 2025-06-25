@@ -1,26 +1,25 @@
 Deployed Applications:
 {{ $namespace := include "k8s-app.namespace" . }}
-{{- range .Values.kubernetes.apps }}
-{{- $app := . }}
-{{- $ctx := dict "app" $app "root" $ }}
+{{- range $appName, $app := .Values.kubernetes.apps }}
+{{- $ctx := dict "app" $app "appName" $appName "root" $ }}
 
-Application: {{ $app.name }}
+Application: {{ $appName }}
 ---
 {{- if and $app.virtualService $app.virtualService.enabled }}
   The application should be accessible via Istio VirtualService:
   {{- range $app.virtualService.hosts }}
   - https://{{ . }}
   {{- end }}
-{{- else if and $app.service (contains "NodePort" $app.service.type) }}
+{{- else if and $app.service (contains "NodePort" (toString $app.service.type)) }}
   export NODE_PORT=$(kubectl get --namespace {{ $namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "k8s-app.fullname" $ctx }})
   export NODE_IP=$(kubectl get nodes --namespace {{ $namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
   echo http://$NODE_IP:$NODE_PORT
-{{- else if and $app.service (contains "LoadBalancer" $app.service.type) }}
+{{- else if and $app.service (contains "LoadBalancer" (toString $app.service.type)) }}
   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
         You can watch the status of by running 'kubectl get --namespace {{ $namespace }} svc -w {{ include "k8s-app.fullname" $ctx }}'
   export SERVICE_IP=$(kubectl get svc --namespace {{ $namespace }} {{ include "k8s-app.fullname" $ctx }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
   echo http://$SERVICE_IP:{{ $app.service.port }}
-{{- else if and $app.service (contains "ClusterIP" $app.service.type) }}
+{{- else if and $app.service (contains "ClusterIP" (toString $app.service.type)) }}
   export POD_NAME=$(kubectl get pods --namespace {{ $namespace }} -l "app.kubernetes.io/name={{ include "k8s-app.name" $ctx }},app.kubernetes.io/instance={{ $.Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
   echo "Visit http://127.0.0.1:8080 to use your application"
   kubectl --namespace {{ $namespace }} port-forward $POD_NAME 8080:{{ if $app.service }}{{ $app.service.targetPort | default 8080 }}{{ else }}8080{{ end }}
