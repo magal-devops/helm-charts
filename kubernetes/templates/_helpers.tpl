@@ -21,7 +21,7 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 {{- if .root.Values.fullnameOverride }}
 {{- .root.Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- printf "%s-%s" .root.Release.Name .appName | trunc 63 | trimSuffix "-" }}
+{{- .appName | trunc 63 | trimSuffix "-" }}
 {{- end }}
 {{- end }}
 
