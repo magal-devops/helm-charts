@@ -6,7 +6,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "k8s-app.name" $ctx }}
+  name: {{ include "k8s-app.fullname" $ctx }}
   namespace: {{ include "k8s-app.namespace" $ }}
   labels:
     {{- include "k8s-app.labels" $ctx | nindent 4 }}
