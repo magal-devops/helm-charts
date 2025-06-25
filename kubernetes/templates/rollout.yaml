@@ -191,7 +191,7 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: {{ $app.service.targetPort | default 8080 }}
+              containerPort: {{ if $app.service }}{{ $app.service.targetPort | default 8080 }}{{ else }}8080{{ end }}
               protocol: TCP
           {{- with $app.livenessProbe }}
           livenessProbe:
