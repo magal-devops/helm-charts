@@ -1,7 +1,7 @@
 {{- range .Values.kubernetes.apps }}
 {{- $app := . }}
 {{- $ctx := dict "app" $app "root" $ }}
-{{- if $app.telemetry.enabled }}
+{{- if and $app.telemetry $app.telemetry.enabled }}
 ---
 apiVersion: telemetry.istio.io/v1alpha1
 kind: Telemetry

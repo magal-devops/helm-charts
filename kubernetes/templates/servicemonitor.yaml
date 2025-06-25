@@ -1,7 +1,7 @@
 {{- range .Values.kubernetes.apps }}
 {{- $app := . }}
 {{- $ctx := dict "app" $app "root" $ }}
-{{- if $app.serviceMonitor.enabled }}
+{{- if and $app.serviceMonitor $app.serviceMonitor.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

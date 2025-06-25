@@ -1,7 +1,7 @@
 {{- range .Values.kubernetes.apps }}
 {{- $app := . }}
 {{- $ctx := dict "app" $app "root" $ }}
-{{- if $app.service.enabled }}
+{{- if and $app.service $app.service.enabled }}
 ---
 apiVersion: v1
 kind: Service

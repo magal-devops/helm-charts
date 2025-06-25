@@ -24,7 +24,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- if not $app.hpa.enabled }}
+  {{- if not (and $app.hpa $app.hpa.enabled) }}
   replicas: {{ $app.replicas | default 1 }}
   {{- end }}
   selector:

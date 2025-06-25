@@ -1,7 +1,7 @@
 {{- range .Values.kubernetes.apps }}
 {{- $app := . }}
 {{- $ctx := dict "app" $app "root" $ }}
-{{- if $app.serviceEntry.enabled }}
+{{- if and $app.serviceEntry $app.serviceEntry.enabled }}
 {{- range $app.serviceEntry.entries }}
 ---
 apiVersion: networking.istio.io/v1beta1

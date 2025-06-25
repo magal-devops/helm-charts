@@ -1,7 +1,7 @@
 {{- range .Values.kubernetes.apps }}
 {{- $app := . }}
 {{- $ctx := dict "app" $app "root" $ }}
-{{- if $app.virtualService.enabled }}
+{{- if and $app.virtualService $app.virtualService.enabled }}
 ---
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
