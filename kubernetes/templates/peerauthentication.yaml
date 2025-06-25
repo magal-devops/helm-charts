@@ -1,0 +1,30 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if $app.peerAuthentication.enabled }}
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ $app.peerAuthentication.name | default (include "k8s-app.fullname" $ctx) }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+    {{- with $app.peerAuthentication.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $app.peerAuthentication.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $app.peerAuthentication.selector }}
+  selector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $app.peerAuthentication.mtls }}
+  mtls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }} 

@@ -1,0 +1,53 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if $app.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $app.serviceMonitor.name | default (include "k8s-app.fullname" $ctx) }}
+  {{- if $app.serviceMonitor.namespace }}
+  namespace: {{ $app.serviceMonitor.namespace }}
+  {{- else }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  {{- end }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+    {{- with $app.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $app.serviceMonitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  endpoints:
+    {{- range $app.serviceMonitor.endpoints }}
+    - port: {{ .port }}
+      {{- with .path }}
+      path: {{ . }}
+      {{- end }}
+      {{- with .interval }}
+      interval: {{ . }}
+      {{- end }}
+      {{- with .scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+      {{- with .honorLabels }}
+      honorLabels: {{ . }}
+      {{- end }}
+      {{- with .metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+  selector:
+    {{- with $app.serviceMonitor.selector }}
+    {{- toYaml . | nindent 4 }}
+    {{- else }}
+    matchLabels:
+      {{- include "k8s-app.selectorLabels" $ctx | nindent 6 }}
+    {{- end }}
+{{- end }}
+{{- end }} 

@@ -1,0 +1,28 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if $app.telemetry.enabled }}
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: {{ $app.telemetry.name | default (include "k8s-app.fullname" $ctx) }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+spec:
+  # This will apply to all workloads in the namespace
+  {{- if $app.telemetry.metrics }}
+  metrics:
+    {{- toYaml $app.telemetry.metrics | nindent 4 }}
+  {{- end }}
+  {{- if $app.telemetry.accessLogging }}
+  accessLogging:
+    {{- toYaml $app.telemetry.accessLogging | nindent 4 }}
+  {{- end }}
+  {{- if $app.telemetry.tracing }}
+  tracing:
+    {{- toYaml $app.telemetry.tracing | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }} 

@@ -1,0 +1,251 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if $app.analysisTemplates }}
+{{- range $app.analysisTemplates }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .args }}
+  args:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  metrics:
+    {{- toYaml .metrics | nindent 4 }}
+  {{- with .dryRun }}
+  dryRun:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .measurementRetention }}
+  measurementRetention:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+# Default AnalysisTemplates if none are provided
+{{- if not (hasKey .Values.kubernetes "analysisTemplates") }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+  namespace: {{ include "k8s-app.namespace" . }}
+  labels:
+    app.kubernetes.io/name: success-rate-template
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  args:
+    - name: service-name
+      value: ""
+    - name: namespace
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+  metrics:
+    - name: success-rate
+      interval: 5m
+      successCondition: result[0] >= 0.95
+      failureCondition: result[0] < 0.90
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            sum(
+              rate(
+                istio_requests_total{
+                  destination_service_name="{{`{{args.service-name}}`}}",
+                  destination_service_namespace="{{`{{args.namespace}}`}}",
+                  response_code!~"5.*"
+                }[5m]
+              )
+            ) /
+            sum(
+              rate(
+                istio_requests_total{
+                  destination_service_name="{{`{{args.service-name}}`}}",
+                  destination_service_namespace="{{`{{args.namespace}}`}}"
+                }[5m]
+              )
+            )
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: latency
+  namespace: {{ include "k8s-app.namespace" . }}
+  labels:
+    app.kubernetes.io/name: latency-template
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  args:
+    - name: service-name
+      value: ""
+    - name: namespace
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+  metrics:
+    - name: latency-p95
+      interval: 5m
+      successCondition: result[0] <= 500
+      failureCondition: result[0] > 1000
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(0.95,
+              sum(rate(
+                istio_request_duration_milliseconds_bucket{
+                  destination_service_name="{{`{{args.service-name}}`}}",
+                  destination_service_namespace="{{`{{args.namespace}}`}}"
+                }[5m]
+              )) by (le)
+            )
+    - name: latency-p99
+      interval: 5m
+      successCondition: result[0] <= 1000
+      failureCondition: result[0] > 2000
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(0.99,
+              sum(rate(
+                istio_request_duration_milliseconds_bucket{
+                  destination_service_name="{{`{{args.service-name}}`}}",
+                  destination_service_namespace="{{`{{args.namespace}}`}}"
+                }[5m]
+              )) by (le)
+            )
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: error-rate
+  namespace: {{ include "k8s-app.namespace" . }}
+  labels:
+    app.kubernetes.io/name: error-rate-template
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  args:
+    - name: service-name
+      value: ""
+    - name: namespace
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+  metrics:
+    - name: error-rate
+      interval: 5m
+      successCondition: result[0] <= 0.05
+      failureCondition: result[0] > 0.10
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            sum(
+              rate(
+                istio_requests_total{
+                  destination_service_name="{{`{{args.service-name}}`}}",
+                  destination_service_namespace="{{`{{args.namespace}}`}}",
+                  response_code=~"5.*"
+                }[5m]
+              )
+            ) /
+            sum(
+              rate(
+                istio_requests_total{
+                  destination_service_name="{{`{{args.service-name}}`}}",
+                  destination_service_namespace="{{`{{args.namespace}}`}}"
+                }[5m]
+              )
+            )
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: cpu-usage
+  namespace: {{ include "k8s-app.namespace" . }}
+  labels:
+    app.kubernetes.io/name: cpu-usage-template
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  args:
+    - name: service-name
+      value: ""
+    - name: namespace
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+  metrics:
+    - name: cpu-usage
+      interval: 5m
+      successCondition: result[0] <= 80
+      failureCondition: result[0] > 95
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            avg(
+              rate(
+                container_cpu_usage_seconds_total{
+                  namespace="{{`{{args.namespace}}`}}",
+                  pod=~"{{`{{args.service-name}}`}}-.*"
+                }[5m]
+              )
+            ) * 100
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: memory-usage
+  namespace: {{ include "k8s-app.namespace" . }}
+  labels:
+    app.kubernetes.io/name: memory-usage-template
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  args:
+    - name: service-name
+      value: ""
+    - name: namespace
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+  metrics:
+    - name: memory-usage
+      interval: 5m
+      successCondition: result[0] <= 80
+      failureCondition: result[0] > 90
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            avg(
+              container_memory_working_set_bytes{
+                namespace="{{`{{args.namespace}}`}}",
+                pod=~"{{`{{args.service-name}}`}}-.*"
+              } / container_spec_memory_limit_bytes{
+                namespace="{{`{{args.namespace}}`}}",
+                pod=~"{{`{{args.service-name}}`}}-.*"
+              }
+            ) * 100
+{{- end }} 

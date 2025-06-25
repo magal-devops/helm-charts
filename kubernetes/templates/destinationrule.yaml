@@ -1,0 +1,32 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if $app.destinationRule.enabled }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ $app.destinationRule.name | default (include "k8s-app.fullname" $ctx) }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+    {{- with $app.destinationRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    {{- with $app.destinationRule.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  host: {{ $app.destinationRule.host }}
+  {{- with $app.destinationRule.trafficPolicy }}
+  trafficPolicy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $app.destinationRule.subsets }}
+  subsets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }} 

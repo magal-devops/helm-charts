@@ -1,0 +1,255 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if eq $app.kind "Rollout" }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "k8s-app.fullname" $ctx }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+  annotations:
+    {{- if $app.rollout.argocd.syncWave }}
+    argocd.argoproj.io/sync-wave: "{{ $app.rollout.argocd.syncWave }}"
+    {{- else }}
+    argocd.argoproj.io/sync-wave: "1"
+    {{- end }}
+    {{- with $app.rolloutLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $app.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not $app.hpa.enabled }}
+  replicas: {{ $app.replicas | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "k8s-app.selectorLabels" $ctx | nindent 6 }}
+  {{- with $app.rollout.revisionHistoryLimit }}
+  revisionHistoryLimit: {{ . }}
+  {{- end }}
+  {{- with $app.rollout.progressDeadlineSeconds }}
+  progressDeadlineSeconds: {{ . }}
+  {{- end }}
+  {{- with $app.rollout.restartAt }}
+  restartAt: {{ . }}
+  {{- end }}
+  {{- with $app.rollout.paused }}
+  paused: {{ . }}
+  {{- end }}
+  strategy:
+    {{- if eq $app.rollout.strategy.type "canary" }}
+    canary:
+      {{- with $app.rollout.strategy.canary.maxSurge }}
+      maxSurge: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.canary.maxUnavailable }}
+      maxUnavailable: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.canary.steps }}
+      steps:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.rollout.strategy.canary.canaryService }}
+      canaryService: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.canary.stableService }}
+      stableService: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.canary.trafficRouting }}
+      trafficRouting:
+        {{- if .istio }}
+        istio:
+          {{- with .istio.virtualService }}
+          virtualService:
+            name: {{ .name }}
+            {{- with .routes }}
+            routes:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+          {{- end }}
+          {{- with .istio.destinationRule }}
+          destinationRule:
+            name: {{ .name }}
+            canarySubsetName: {{ .canarySubsetName }}
+            stableSubsetName: {{ .stableSubsetName }}
+          {{- end }}
+        {{- end }}
+        {{- if .nginx }}
+        nginx:
+          {{- with .nginx.stableIngress }}
+          stableIngress: {{ . }}
+          {{- end }}
+          {{- with .nginx.annotationPrefix }}
+          annotationPrefix: {{ . }}
+          {{- end }}
+          {{- with .nginx.additionalIngressAnnotations }}
+          additionalIngressAnnotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- with $app.rollout.strategy.canary.analysis }}
+      analysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.rollout.strategy.canary.antiAffinity }}
+      antiAffinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- else if eq $app.rollout.strategy.type "blueGreen" }}
+    blueGreen:
+      {{- with $app.rollout.strategy.blueGreen.activeService }}
+      activeService: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.blueGreen.previewService }}
+      previewService: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.blueGreen.autoPromotionEnabled }}
+      autoPromotionEnabled: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.blueGreen.scaleDownDelaySeconds }}
+      scaleDownDelaySeconds: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.blueGreen.prePromotionAnalysis }}
+      prePromotionAnalysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.rollout.strategy.blueGreen.postPromotionAnalysis }}
+      postPromotionAnalysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.rollout.strategy.blueGreen.previewReplicaCount }}
+      previewReplicaCount: {{ . }}
+      {{- end }}
+      {{- with $app.rollout.strategy.blueGreen.antiAffinity }}
+      antiAffinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-app.labels" $ctx | nindent 8 }}
+        {{- with $app.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
+        {{- with $app.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if $app.serviceAccount.create }}
+      serviceAccountName: {{ include "k8s-app.serviceAccountName" $ctx }}
+      {{- end }}
+      {{- with $app.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.extraInitContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "k8s-app.name" $ctx }}
+          image: "{{ $app.image.registry }}/{{ $app.image.repository }}:{{ $app.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $app.image.pullPolicy }}
+          {{- with $app.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or $app.env $app.rollout.enableStandardEnvs }}
+          {{- if $app.rollout.enableStandardEnvs }}
+          {{- include "k8s-app.envs.merged" $ctx | nindent 10 }}
+          {{- else }}
+          env:
+            {{- toYaml $app.env | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- with $app.envFromSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          {{- range $app.envFromSecrets }}
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          {{- range $app.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $app.service.targetPort }}
+              protocol: TCP
+          {{- with $app.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or $app.extraVolumeMounts $app.extraSecretMounts }}
+          volumeMounts:
+            {{- range $app.extraVolumeMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- with .readOnly }}
+              readOnly: {{ . }}
+              {{- end }}
+            {{- end }}
+            {{- range $app.extraSecretMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- with .readOnly }}
+              readOnly: {{ . }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+      {{- if or $app.extraVolumeMounts $app.extraSecretMounts }}
+      volumes:
+        {{- range $app.extraVolumeMounts }}
+        - name: {{ .name }}
+          {{- if .configMap }}
+          configMap:
+            name: {{ .configMap }}
+          {{- else if .emptyDir }}
+          emptyDir: {{- toYaml .emptyDir | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- range $app.extraSecretMounts }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ .secretName }}
+        {{- end }}
+      {{- end }}
+      {{- with $app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }} 

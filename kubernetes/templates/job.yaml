@@ -1,0 +1,168 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if eq $app.kind "Job" }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  {{- if $app.job.argocd.hook }}
+  generateName: {{ include "k8s-app.fullname" $ctx }}-
+  {{- else }}
+  name: {{ include "k8s-app.fullname" $ctx }}
+  {{- end }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+  annotations:
+    {{- if $app.job.argocd.hook }}
+    argocd.argoproj.io/hook: {{ $app.job.argocd.hook }}
+    {{- if $app.job.argocd.hookDeletePolicy }}
+    argocd.argoproj.io/hook-delete-policy: {{ $app.job.argocd.hookDeletePolicy }}
+    {{- end }}
+    {{- end }}
+    {{- if $app.job.argocd.syncWave }}
+    argocd.argoproj.io/sync-wave: "{{ $app.job.argocd.syncWave }}"
+    {{- else }}
+    argocd.argoproj.io/sync-wave: "3"
+    {{- end }}
+    {{- with $app.jobLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $app.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $app.job.backoffLimit }}
+  backoffLimit: {{ . }}
+  {{- end }}
+  {{- with $app.job.activeDeadlineSeconds }}
+  activeDeadlineSeconds: {{ . }}
+  {{- end }}
+  {{- with $app.job.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ . }}
+  {{- end }}
+  {{- with $app.job.completions }}
+  completions: {{ . }}
+  {{- end }}
+  {{- with $app.job.parallelism }}
+  parallelism: {{ . }}
+  {{- end }}
+  {{- with $app.job.completionMode }}
+  completionMode: {{ . }}
+  {{- end }}
+  {{- with $app.job.suspend }}
+  suspend: {{ . }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-app.labels" $ctx | nindent 8 }}
+        {{- with $app.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $app.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if $app.serviceAccount.create }}
+      serviceAccountName: {{ include "k8s-app.serviceAccountName" $ctx }}
+      {{- end }}
+      {{- with $app.job.restartPolicy }}
+      restartPolicy: {{ . }}
+      {{- end }}
+      {{- with $app.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.extraInitContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "k8s-app.name" $ctx }}
+          image: "{{ $app.image.registry }}/{{ $app.image.repository }}:{{ $app.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $app.image.pullPolicy }}
+          {{- with $app.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or $app.env $app.job.enableStandardEnvs }}
+          {{- if $app.job.enableStandardEnvs }}
+          {{- include "k8s-app.envs.merged" $ctx | nindent 10 }}
+          {{- else }}
+          env:
+            {{- toYaml $app.env | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- with $app.envFromSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          {{- range $app.envFromSecrets }}
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          {{- range $app.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+          {{- end }}
+          {{- with $app.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or $app.extraVolumeMounts $app.extraSecretMounts }}
+          volumeMounts:
+            {{- range $app.extraVolumeMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- with .readOnly }}
+              readOnly: {{ . }}
+              {{- end }}
+            {{- end }}
+            {{- range $app.extraSecretMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- with .readOnly }}
+              readOnly: {{ . }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+      {{- if or $app.extraVolumeMounts $app.extraSecretMounts }}
+      volumes:
+        {{- range $app.extraVolumeMounts }}
+        - name: {{ .name }}
+          {{- if .configMap }}
+          configMap:
+            name: {{ .configMap }}
+          {{- else if .emptyDir }}
+          emptyDir: {{- toYaml .emptyDir | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- range $app.extraSecretMounts }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ .secretName }}
+        {{- end }}
+      {{- end }}
+      {{- with $app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }} 

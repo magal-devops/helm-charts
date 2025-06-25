@@ -1,0 +1,48 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if $app.hpa.enabled }}
+---
+apiVersion: {{ include "k8s-app.hpa.apiVersion" $ctx }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "k8s-app.fullname" $ctx }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: {{ $app.kind }}
+    name: {{ include "k8s-app.fullname" $ctx }}
+  minReplicas: {{ $app.hpa.minReplicas }}
+  maxReplicas: {{ $app.hpa.maxReplicas }}
+  metrics:
+    {{- if $app.hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        {{- if eq (include "k8s-app.hpa.apiVersion" $ctx) "autoscaling/v2beta1" }}
+        targetAverageUtilization: {{ $app.hpa.targetCPUUtilizationPercentage }}
+        {{- else }}
+        target:
+          type: Utilization
+          averageUtilization: {{ $app.hpa.targetCPUUtilizationPercentage }}
+        {{- end }}
+    {{- end }}
+    {{- if $app.hpa.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        {{- if eq (include "k8s-app.hpa.apiVersion" $ctx) "autoscaling/v2beta1" }}
+        targetAverageUtilization: {{ $app.hpa.targetMemoryUtilizationPercentage }}
+        {{- else }}
+        target:
+          type: Utilization
+          averageUtilization: {{ $app.hpa.targetMemoryUtilizationPercentage }}
+        {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }} 

@@ -1,0 +1,31 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if $app.serviceEntry.enabled }}
+{{- range $app.serviceEntry.entries }}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+spec:
+  {{- with .hosts }}
+  hosts:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .ports }}
+  ports:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .location }}
+  location: {{ . }}
+  {{- end }}
+  {{- with .resolution }}
+  resolution: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }} 

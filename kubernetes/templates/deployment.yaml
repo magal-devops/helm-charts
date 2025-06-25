@@ -1,0 +1,146 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if eq $app.kind "Deployment" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-app.fullname" $ctx }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+    {{- with $app.deploymentLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    {{- with $app.deploymentAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if not $app.hpa.enabled }}
+  replicas: {{ $app.replicas | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "k8s-app.selectorLabels" $ctx | nindent 6 }}
+  {{- with $app.deploymentStrategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-app.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
+    spec:
+      {{- if $app.serviceAccount.create }}
+      serviceAccountName: {{ include "k8s-app.serviceAccountName" $ctx }}
+      {{- end }}
+      {{- with $app.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.extraInitContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "k8s-app.name" $ctx }}
+          image: "{{ $app.image.registry }}/{{ $app.image.repository }}:{{ $app.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $app.image.pullPolicy }}
+          {{- with $app.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or $app.env $app.enableStandardEnvs }}
+          {{- if $app.enableStandardEnvs }}
+          {{- include "k8s-app.envs.merged" $ctx | nindent 10 }}
+          {{- else }}
+          env:
+            {{- toYaml $app.env | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- with $app.envFromSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          {{- range $app.envFromSecrets }}
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          {{- range $app.envFromConfigMaps }}
+            - configMapRef:
+                name: {{ . }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $app.service.targetPort }}
+              protocol: TCP
+          {{- with $app.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or $app.extraVolumeMounts $app.extraSecretMounts }}
+          volumeMounts:
+            {{- range $app.extraVolumeMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- with .readOnly }}
+              readOnly: {{ . }}
+              {{- end }}
+            {{- end }}
+            {{- range $app.extraSecretMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- with .readOnly }}
+              readOnly: {{ . }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+      {{- if or $app.extraVolumeMounts $app.extraSecretMounts }}
+      volumes:
+        {{- range $app.extraVolumeMounts }}
+        - name: {{ .name }}
+          {{- if .configMap }}
+          configMap:
+            name: {{ .configMap }}
+          {{- else if .emptyDir }}
+          emptyDir: {{- toYaml .emptyDir | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- range $app.extraSecretMounts }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ .secretName }}
+        {{- end }}
+      {{- end }}
+      {{- with $app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $app.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }} 

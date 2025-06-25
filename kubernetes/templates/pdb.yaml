@@ -1,0 +1,24 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if $app.pdb.enabled }}
+---
+apiVersion: {{ include "k8s-app.pdb.apiVersion" $ctx }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "k8s-app.fullname" $ctx }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+spec:
+  {{- if $app.pdb.minAvailable }}
+  minAvailable: {{ $app.pdb.minAvailable }}
+  {{- end }}
+  {{- if $app.pdb.maxUnavailable }}
+  maxUnavailable: {{ $app.pdb.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "k8s-app.selectorLabels" $ctx | nindent 6 }}
+{{- end }}
+{{- end }} 

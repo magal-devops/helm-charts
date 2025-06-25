@@ -1,0 +1,183 @@
+{{- range .Values.kubernetes.apps }}
+{{- $app := . }}
+{{- $ctx := dict "app" $app "root" $ }}
+{{- if eq $app.kind "CronJob" }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "k8s-app.fullname" $ctx }}
+  namespace: {{ include "k8s-app.namespace" $ }}
+  labels:
+    {{- include "k8s-app.labels" $ctx | nindent 4 }}
+  annotations:
+    {{- if $app.cronJob.argocd.syncWave }}
+    argocd.argoproj.io/sync-wave: "{{ $app.cronJob.argocd.syncWave }}"
+    {{- else }}
+    argocd.argoproj.io/sync-wave: "4"
+    {{- end }}
+    {{- with $app.cronJobLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $app.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  schedule: {{ $app.cronJob.schedule | quote }}
+  {{- with $app.cronJob.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  {{- with $app.cronJob.concurrencyPolicy }}
+  concurrencyPolicy: {{ . }}
+  {{- end }}
+  {{- with $app.cronJob.suspend }}
+  suspend: {{ . }}
+  {{- end }}
+  {{- with $app.cronJob.successfulJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ . }}
+  {{- end }}
+  {{- with $app.cronJob.failedJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ . }}
+  {{- end }}
+  {{- with $app.cronJob.startingDeadlineSeconds }}
+  startingDeadlineSeconds: {{ . }}
+  {{- end }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "k8s-app.labels" $ctx | nindent 8 }}
+        {{- with $app.jobLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $app.jobAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with $app.cronJob.backoffLimit }}
+      backoffLimit: {{ . }}
+      {{- end }}
+      {{- with $app.cronJob.activeDeadlineSeconds }}
+      activeDeadlineSeconds: {{ . }}
+      {{- end }}
+      {{- with $app.cronJob.ttlSecondsAfterFinished }}
+      ttlSecondsAfterFinished: {{ . }}
+      {{- end }}
+      {{- with $app.cronJob.completions }}
+      completions: {{ . }}
+      {{- end }}
+      {{- with $app.cronJob.parallelism }}
+      parallelism: {{ . }}
+      {{- end }}
+      template:
+        metadata:
+          labels:
+            {{- include "k8s-app.labels" $ctx | nindent 12 }}
+            {{- with $app.podLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $app.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          {{- if $app.serviceAccount.create }}
+          serviceAccountName: {{ include "k8s-app.serviceAccountName" $ctx }}
+          {{- end }}
+          {{- with $app.cronJob.restartPolicy }}
+          restartPolicy: {{ . }}
+          {{- end }}
+          {{- with $app.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.extraInitContainers }}
+          initContainers:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: {{ include "k8s-app.name" $ctx }}
+              image: "{{ $app.image.registry }}/{{ $app.image.repository }}:{{ $app.image.tag | default $.Chart.AppVersion }}"
+              imagePullPolicy: {{ $app.image.pullPolicy }}
+              {{- with $app.command }}
+              command:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with $app.args }}
+              args:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- if or $app.env $app.cronJob.enableStandardEnvs }}
+              {{- if $app.cronJob.enableStandardEnvs }}
+              {{- include "k8s-app.envs.merged" $ctx | nindent 14 }}
+              {{- else }}
+              env:
+                {{- toYaml $app.env | nindent 16 }}
+              {{- end }}
+              {{- end }}
+              {{- with $app.envFromSecret }}
+              envFrom:
+                - secretRef:
+                    name: {{ . }}
+              {{- end }}
+              {{- range $app.envFromSecrets }}
+                - secretRef:
+                    name: {{ . }}
+              {{- end }}
+              {{- range $app.envFromConfigMaps }}
+                - configMapRef:
+                    name: {{ . }}
+              {{- end }}
+              {{- with $app.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- if or $app.extraVolumeMounts $app.extraSecretMounts }}
+              volumeMounts:
+                {{- range $app.extraVolumeMounts }}
+                - name: {{ .name }}
+                  mountPath: {{ .mountPath }}
+                  {{- with .readOnly }}
+                  readOnly: {{ . }}
+                  {{- end }}
+                {{- end }}
+                {{- range $app.extraSecretMounts }}
+                - name: {{ .name }}
+                  mountPath: {{ .mountPath }}
+                  {{- with .readOnly }}
+                  readOnly: {{ . }}
+                  {{- end }}
+                {{- end }}
+              {{- end }}
+          {{- if or $app.extraVolumeMounts $app.extraSecretMounts }}
+          volumes:
+            {{- range $app.extraVolumeMounts }}
+            - name: {{ .name }}
+              {{- if .configMap }}
+              configMap:
+                name: {{ .configMap }}
+              {{- else if .emptyDir }}
+              emptyDir: {{- toYaml .emptyDir | nindent 16 }}
+              {{- end }}
+            {{- end }}
+            {{- range $app.extraSecretMounts }}
+            - name: {{ .name }}
+              secret:
+                secretName: {{ .secretName }}
+            {{- end }}
+          {{- end }}
+          {{- with $app.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $app.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
+{{- end }} 

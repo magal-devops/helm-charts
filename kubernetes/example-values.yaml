@@ -1,0 +1,393 @@
+kubernetes:
+  base:
+    project: magal-devops-api
+    monoRepo:
+      url: git@github.com:magal-devops/monorepo-gitops.git
+      appsFolder: apps-config
+      revision: main
+    globalRegistry:
+      url: https://index.docker.io/v1/
+    deployConfig:
+      cluster: https://kubernetes.default.svc
+      environment: production
+    metadata:
+      team: magal-devops
+
+  apps:
+    # Standard Deployment Example
+    - name: api-gateway
+      kind: Deployment
+      enableStandardEnvs: true  # Uses _envs.tpl
+      image:
+        registry: docker.io
+        repository: nginx
+        pullPolicy: IfNotPresent
+        tag: "1.25"
+      serviceAccount:
+        create: true
+        annotations: {}
+        automountServiceAccountToken: true
+        name: ""
+      replicas: 3
+      env:
+        - name: CUSTOM_VAR
+          value: "custom-value"
+      service:
+        enabled: true
+        type: ClusterIP
+        port: 80
+        targetPort: 80
+      hpa:
+        enabled: true
+        minReplicas: 2
+        maxReplicas: 10
+        targetCPUUtilizationPercentage: 70
+      pdb:
+        enabled: true
+        minAvailable: 1
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 250m
+          memory: 256Mi
+
+    # Argo Rollout (Canary) Example
+    - name: user-service
+      kind: Rollout
+      enableStandardEnvs: true
+      image:
+        registry: docker.io
+        repository: myapp/user-service
+        pullPolicy: IfNotPresent
+        tag: "v1.2.0"
+      serviceAccount:
+        create: true
+      replicas: 5
+      service:
+        enabled: true
+        type: ClusterIP
+        port: 8080
+        targetPort: 8080
+      rollout:
+        revisionHistoryLimit: 10
+        progressDeadlineSeconds: 600
+        strategy:
+          type: canary
+          canary:
+            maxSurge: "25%"
+            maxUnavailable: 0
+            canaryService: user-service-canary
+            stableService: user-service-stable
+            steps:
+              - setWeight: 20
+              - pause:
+                  duration: 10s
+              - setWeight: 40
+              - pause:
+                  duration: 10s
+              - setWeight: 60
+              - pause:
+                  duration: 10s
+              - setWeight: 80
+              - pause:
+                  duration: 10s
+            trafficRouting:
+              istio:
+                virtualService:
+                  name: user-service-vs
+                destinationRule:
+                  name: user-service-dr
+                  canarySubsetName: canary
+                  stableSubsetName: stable
+            analysis:
+              templates:
+                - templateName: success-rate
+                - templateName: latency
+              args:
+                - name: service-name
+                  value: user-service
+      virtualService:
+        enabled: true
+        gateways:
+          - istio-gateway
+        hosts:
+          - api.magal-devops.com
+        http:
+          - match:
+              - uri:
+                  prefix: /user/
+            route:
+              - destination:
+                  host: user-service
+                  port:
+                    number: 8080
+      destinationRule:
+        enabled: true
+        host: user-service
+        subsets:
+          - name: stable
+            labels:
+              version: stable
+          - name: canary
+            labels:
+              version: canary
+
+    # CronJob Example
+    - name: data-backup
+      kind: CronJob
+      enableStandardEnvs: true
+      image:
+        registry: docker.io
+        repository: postgres
+        pullPolicy: IfNotPresent
+        tag: "15-alpine"
+      serviceAccount:
+        create: true
+      command:
+        - /bin/bash
+        - -c
+      args:
+        - |
+          echo "Starting backup..."
+          pg_dump $DATABASE_URL > /backup/backup-$(date +%Y%m%d-%H%M%S).sql
+          echo "Backup completed"
+      cronJob:
+        schedule: "0 2 * * *"  # Daily at 2 AM
+        timeZone: "UTC"
+        concurrencyPolicy: Forbid
+        successfulJobsHistoryLimit: 3
+        failedJobsHistoryLimit: 1
+        backoffLimit: 2
+        activeDeadlineSeconds: 3600
+        ttlSecondsAfterFinished: 86400
+        restartPolicy: OnFailure
+        enableStandardEnvs: true
+      resources:
+        limits:
+          cpu: 200m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+      extraSecretMounts:
+        - name: backup-volume
+          secretName: backup-credentials
+          mountPath: /backup
+          readOnly: false
+
+    # Job Example (Database Migration)
+    - name: db-migration
+      kind: Job
+      enableStandardEnvs: true
+      image:
+        registry: docker.io
+        repository: migrate/migrate
+        pullPolicy: IfNotPresent
+        tag: "v4.16.2"
+      serviceAccount:
+        create: true
+      command:
+        - migrate
+      args:
+        - -path
+        - /migrations
+        - -database
+        - $DATABASE_URL
+        - up
+      job:
+        backoffLimit: 3
+        activeDeadlineSeconds: 600
+        ttlSecondsAfterFinished: 600
+        completions: 1
+        parallelism: 1
+        restartPolicy: Never
+        enableStandardEnvs: true
+      resources:
+        limits:
+          cpu: 200m
+          memory: 256Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+      extraVolumeMounts:
+        - name: migrations
+          configMap: db-migrations
+          mountPath: /migrations
+          readOnly: true
+    
+    # Migration Job with ArgoCD PreSync Hook  
+    - name: schema-migration
+      kind: Job
+      enableStandardEnvs: true
+      image:
+        registry: docker.io
+        repository: migrate/migrate
+        pullPolicy: IfNotPresent
+        tag: "v4.16.2"
+      serviceAccount:
+        create: true
+      command:
+        - migrate
+      args:
+        - -path
+        - /migrations
+        - -database
+        - $DATABASE_URL
+        - up
+      job:
+        enabled: true
+        backoffLimit: 3
+        activeDeadlineSeconds: 1800
+        ttlSecondsAfterFinished: 86400
+        completions: 1
+        parallelism: 1
+        restartPolicy: Never
+        enableStandardEnvs: true
+        # ArgoCD Hook Configuration
+        argocd:
+          hook: PreSync
+          hookDeletePolicy: BeforeHookCreation
+          syncWave: "-1"
+      env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: migration-secret
+              key: database-url
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 200m
+          memory: 256Mi
+      extraVolumeMounts:
+        - name: migrations
+          configMap: schema-migrations
+          mountPath: /migrations
+          readOnly: true
+      secret:
+        enabled: true
+        name: migration-secret
+        stringData:
+          database-url: "postgresql://user:pass@host:5432/dbname"
+
+    # Blue-Green Deployment Example
+    - name: payment-service
+      kind: Rollout
+      enableStandardEnvs: true
+      image:
+        registry: docker.io
+        repository: myapp/payment-service
+        pullPolicy: IfNotPresent
+        tag: "v2.1.0"
+      serviceAccount:
+        create: true
+      replicas: 4
+      service:
+        enabled: true
+        type: ClusterIP
+        port: 8080
+        targetPort: 8080
+      rollout:
+        strategy:
+          type: blueGreen
+          blueGreen:
+            activeService: payment-service-active
+            previewService: payment-service-preview
+            autoPromotionEnabled: false
+            scaleDownDelaySeconds: 30
+            previewReplicaCount: 2
+            prePromotionAnalysis:
+              templates:
+                - templateName: success-rate
+                - templateName: latency
+              args:
+                - name: service-name
+                  value: payment-service-preview
+
+    # Secret Example
+    - name: shared-secret
+      secret:
+        enabled: true
+        name: app-secrets
+        type: Opaque
+        stringData:
+          database-url: "postgresql://user:pass@db.magal-devops.com:5432/magal-devops"
+          redis-url: "redis://:pass@redis.magal-devops.com:6379"
+          jwt-secret: "super-secret-key"
+          api-key: "external-api-key"
+
+    # ServiceMonitor Example
+    - name: monitoring-config
+      serviceMonitor:
+        enabled: true
+        namespace: monitoring
+        endpoints:
+          - port: http-monitoring
+            path: /metrics
+            interval: 30s
+            scrapeTimeout: 10s
+            honorLabels: true
+        labels:
+          app: magal-devops-api
+          release: prometheus
+
+    # PrometheusRule Example
+    - name: alert-rules
+      prometheusRule:
+        enabled: true
+        labels:
+          app: magal-devops-api
+          prometheus: kube-prometheus
+          role: alert-rules
+        groups:
+          - name: magal-devops-api.rules
+            rules:
+              - alert: HighErrorRate
+                expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "High error rate detected"
+                  description: "Error rate is {{ $value | humanizePercentage }}"
+
+    # Custom AnalysisTemplate Example
+    - name: custom-analysis
+      analysisTemplates:
+        - name: custom-success-rate
+          args:
+            - name: service-name
+              value: ""
+            - name: threshold
+              value: "0.99"
+          metrics:
+            - name: custom-success-rate
+              interval: 2m
+              successCondition: result[0] >= 0.99
+              failureCondition: result[0] < 0.95
+              provider:
+                prometheus:
+                  address: http://prometheus.monitoring.svc.cluster.local:9090
+                  query: |
+                    sum(rate(http_requests_total{job="{{args.service-name}}", code!~"5.."}[5m])) /
+                    sum(rate(http_requests_total{job="{{args.service-name}}"}[5m]))
+        - name: custom-latency-check
+          args:
+            - name: service-name
+              value: ""
+          metrics:
+            - name: response-time-p50
+              interval: 1m
+              successCondition: result[0] <= 200
+              failureCondition: result[0] > 500
+              provider:
+                prometheus:
+                  address: http://prometheus.monitoring.svc.cluster.local:9090
+                  query: |
+                    histogram_quantile(0.50,
+                      sum(rate(http_request_duration_seconds_bucket{job="{{args.service-name}}"}[5m])) by (le)
+                    ) * 1000 

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "k8s-app.namespace" . }}
+  labels:
+    {{- include "k8s-app.baseLabels" . | nindent 4 }}
+    name: {{ include "k8s-app.namespace" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+    {{- with .Values.kubernetes.base.namespace.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }} 
