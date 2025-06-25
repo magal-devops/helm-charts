@@ -36,7 +36,7 @@ spec:
       annotations:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
     spec:
-      {{- if $app.serviceAccount.create }}
+      {{- if and $app.serviceAccount $app.serviceAccount.create }}
       serviceAccountName: {{ include "k8s-app.serviceAccountName" $ctx }}
       {{- end }}
       {{- with $app.securityContext }}
@@ -82,7 +82,7 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: {{ $app.service.targetPort }}
+              containerPort: {{ $app.service.targetPort | default 8080 }}
               protocol: TCP
           {{- with $app.livenessProbe }}
           livenessProbe:
