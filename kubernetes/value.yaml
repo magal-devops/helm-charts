@@ -14,6 +14,10 @@ kubernetes:
       team: magal-devops
     namespace:
       annotations: {}
+  
+  # Argo Rollouts configuration (requires Argo Rollouts to be installed in the cluster)
+  argoRollouts:
+    enabled: false
   apps:
     - name: magal-devops-api
       image:

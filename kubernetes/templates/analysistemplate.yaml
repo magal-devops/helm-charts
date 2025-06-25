@@ -1,7 +1,7 @@
 {{- range .Values.kubernetes.apps }}
 {{- $app := . }}
 {{- $ctx := dict "app" $app "root" $ }}
-{{- if $app.analysisTemplates }}
+{{- if and $.Values.kubernetes.argoRollouts.enabled $app.analysisTemplates }}
 {{- range $app.analysisTemplates }}
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -37,8 +37,8 @@ spec:
 {{- end }}
 {{- end }}
 
-# Default AnalysisTemplates if none are provided
-{{- if not (hasKey .Values.kubernetes "analysisTemplates") }}
+# Default AnalysisTemplates if none are provided and Argo Rollouts is enabled
+{{- if and .Values.kubernetes.argoRollouts.enabled (not (hasKey .Values.kubernetes "analysisTemplates")) }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
